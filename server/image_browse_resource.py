@@ -1,6 +1,8 @@
 from girder.api import access
 from girder.api.v1.item import Item as ItemResource
 from girder.api.describe import autoDescribeRoute, Description
+from girder.constants import AccessType
+from girder.models.folder import Folder
 
 
 class ImageBrowseResource(ItemResource):
@@ -12,27 +14,38 @@ class ImageBrowseResource(ItemResource):
         super(ItemResource, self).__init__()
 
         self.resourceName = 'item'
-        apiRoot.item.route('GET', (':itemId', 'next_image'), self.getNextImage)
-        apiRoot.item.route('GET', (':itemId', 'previous_image'), self.getPreviousImage)
+        apiRoot.item.route('GET', (':id', 'next_image'), self.getNextImage)
+        apiRoot.item.route('GET', (':id', 'previous_image'), self.getPreviousImage)
+
+    def getAdjacentImages(self, currentImage):
+        folderModel = Folder()
+        folder = folderModel.load(
+            currentImage['folderId'], user=self.getCurrentUser(), level=AccessType.READ)
+        allImages = list(folderModel.childItems(folder))
+        index = allImages.index(currentImage)
+        return {
+            'previous': allImages[index - 1],
+            'next': allImages[(index + 1) % len(allImages)]
+        }
 
     @access.public
     @autoDescribeRoute(
         Description('Get the next image in the same folder as the given item.')
-        .param('id', 'The current item ID', paramType='path')
+        .modelParam('id', 'The current image ID',
+                    model='item', destName='image', paramType='path', level=AccessType.READ)
         .errorResponse()
-        .errorResponse('This is the last image', code=404)
-        .errorResponse('Image ID not found', code=404)
+        .errorResponse('Image not found', code=404)
     )
-    def getNextImage(self):
-        pass
+    def getNextImage(self, image):
+        return self.getAdjacentImages(image)['next']
 
     @access.public
     @autoDescribeRoute(
         Description('Get the previous image in the same folder as the given item.')
-        .param('id', 'The current item ID', paramType='path')
+        .modelParam('id', 'The current item ID',
+                    model='item', destName='image', paramType='path', level=AccessType.READ)
         .errorResponse()
-        .errorResponse('This is the first image', code=404)
-        .errorResponse('Image ID not found', code=404)
+        .errorResponse('Image not found', code=404)
     )
-    def getPreviousImage(self):
-        pass
+    def getPreviousImage(self, image):
+        return self.getAdjacentImages(image)['previous']
